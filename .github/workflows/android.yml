@@ -1,0 +1,71 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Build APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      # ✅ الحل الجذري: قبول كل التراخيص تلقائياً بدون سؤال
+      - name: Accept All Android Licenses
+        run: |
+          set +e
+          SDK_ROOT="/usr/local/lib/android/sdk"
+          mkdir -p $SDK_ROOT/licenses
+          # بصمات التراخيص المعروفة
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $SDK_ROOT/licenses/android-sdk-license
+          echo "84831b9409646a918e30573bab4c9c91346d8abd" > $SDK_ROOT/licenses/android-sdk-preview-license
+          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $SDK_ROOT/licenses/android-sdk-license
+          echo "601085b94cd77f0b54ff86406957099ebe79c4d6" >> $SDK_ROOT/licenses/android-sdk-license
+          echo "d975f751698a77b662f1254ddbeed3901e976f5a" > $SDK_ROOT/licenses/intel-android-extra-license
+          echo "859f317696f67ef3d7f30a50a5560e7834b43903" > $SDK_ROOT/licenses/android-googletv-license
+          echo "33b6a2b64607f11b759f320ef9dff4ae5c47d97a" > $SDK_ROOT/licenses/android-sdk-arm-dbt-license
+          echo "b80e4a3d4b0e5f0e0e5f0e0e5f0e0e5f" > $SDK_ROOT/licenses/android-googlexr-license
+          # ✅ استخدام yes لتمرير أي سؤال متبقٍ
+          SDKMANAGER=$(find $SDK_ROOT/cmdline-tools -name sdkmanager 2>/dev/null | head -1)
+          if [ -n "$SDKMANAGER" ]; then
+            yes | $SDKMANAGER --licenses || true
+          fi
+          set -e
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Make Gradle executable
+        run: chmod +x android/gradlew
+
+      - name: Build Debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: concrete-structure-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
